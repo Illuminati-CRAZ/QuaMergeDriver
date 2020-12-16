@@ -7,11 +7,13 @@ namespace QuaMergeDriver.Structures
 {
     public class Block
     {
-        public List<HitObjectInfo> HitObjects;
+        public List<HitObjectInfo> HitObjects { get; set; }
         
-        public List<TimingPointInfo> TimingPoints;
+        public List<TimingPointInfo> TimingPoints { get; set; }
         
-        public List<SliderVelocityInfo> ScrollVelocities;
+        public List<SliderVelocityInfo> ScrollVelocities { get; set; }
+        
+        public Block() {}
         
         public Block(List<HitObjectInfo> hitObjects, List<TimingPointInfo> timingPoints, List<SliderVelocityInfo> scrollVelocities)
         {

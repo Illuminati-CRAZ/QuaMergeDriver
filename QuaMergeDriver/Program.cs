@@ -1,6 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using QuaMergeDriver.Structures;
 using Quaver.API.Maps;
+using Quaver.API.Maps.Structures;
 
 namespace QuaMergeDriver
 {
@@ -12,13 +16,16 @@ namespace QuaMergeDriver
             string ourPath = args[1];
             string theirPath = args[2];
             
+            // temporary
+            string mergePath = "test/merged.qua";
+            
             int blockSize = Int32.Parse(args[3]);
             
-            int mergeConflict = Merge(ancestorPath, ourPath, theirPath, blockSize);
-            return mergeConflict;
+            int mergeConflicts = Merge(ancestorPath, ourPath, theirPath, blockSize, mergePath);
+            return mergeConflicts;
         }
         
-        private static int Merge(string ancestorPath, string ourPath, string theirPath, int blockSize = 1000)
+        private static int Merge(string ancestorPath, string ourPath, string theirPath, int blockSize = 1000, string mergePath = null)
         {
             // hit objects, timing points, scroll velocities, preview points, editor layers
             // key counts, diff names
@@ -32,9 +39,147 @@ namespace QuaMergeDriver
             Qua ours = Qua.Parse(ourPath);
             Qua theirs = Qua.Parse(theirPath);
             
-            int mergeConflict = 0;
+            ancestor.Sort();
+            ours.Sort();
+            theirs.Sort();
+            
+            int minTime = Math.Min(ancestor.HitObjects[0].StartTime, 
+                          Math.Min((int)ancestor.TimingPoints[0].StartTime,
+                          Math.Min((int)ancestor.SliderVelocities[0].StartTime,
+                          Math.Min(ours.HitObjects[0].StartTime,
+                          Math.Min((int)ours.TimingPoints[0].StartTime,
+                          Math.Min((int)ours.SliderVelocities[0].StartTime,
+                          Math.Min(theirs.HitObjects[0].StartTime,
+                          Math.Min((int)theirs.TimingPoints[0].StartTime,
+                                   (int)theirs.SliderVelocities[0].StartTime))))))));
+                          
+            int maxTime = Math.Max(ancestor.HitObjects.Last().StartTime, 
+                          Math.Max((int)ancestor.TimingPoints.Last().StartTime,
+                          Math.Max((int)ancestor.SliderVelocities.Last().StartTime,
+                          Math.Max(ours.HitObjects.Last().StartTime,
+                          Math.Max((int)ours.TimingPoints.Last().StartTime,
+                          Math.Max((int)ours.SliderVelocities.Last().StartTime,
+                          Math.Max(theirs.HitObjects.Last().StartTime,
+                          Math.Max((int)theirs.TimingPoints.Last().StartTime,
+                                   (int)theirs.SliderVelocities.Last().StartTime))))))));
+            
+            List<Block> ancestorBlocks = GenerateBlocks(ancestor, blockSize, minTime, maxTime);
+            List<Block> ourBlocks = GenerateBlocks(ours, blockSize, minTime, maxTime);
+            List<Block> theirBlocks = GenerateBlocks(theirs, blockSize, minTime, maxTime);
+            
+            List<Block> mergeBlocks = new List<Block>();
+            int mergeConflicts = 0;
+            
+            for (int i = 0; i < ancestorBlocks.Count; i++)
+            {
+                // if our and their block are the same, using either block for the merge works
+                if (ourBlocks[i].Equals(theirBlocks[i]))
+                    mergeBlocks.Add(ourBlocks[i]);
+                // if they aren't the same, check if one of the two blocks is uniquely different from ancestor's
+                else
+                {
+                    // our block hasn't changed, so use their block
+                    if (ourBlocks[i].Equals(ancestorBlocks[i]))
+                        mergeBlocks.Add(theirBlocks[i]);
+                    // their block hasn't changed, so use ours
+                    else if (theirBlocks[i].Equals(ancestorBlocks[i]))
+                        mergeBlocks.Add(ourBlocks[i]);
+                    // both have changed, requires manual editting by user
+                    // TODO: figure out wtf to do here
+                    else
+                        mergeBlocks.Add(ancestorBlocks[i]); // temporary
+                        mergeConflicts++;
+                }
+            }
+            
+            // TODO: update
+            Qua mergeQua = new Qua
+            {
+                AudioFile = ancestor.AudioFile,
+                SongPreviewTime = ancestor.SongPreviewTime,
+                BackgroundFile = ancestor.BackgroundFile,
+                BannerFile = ancestor.BannerFile,
+                MapId = -1,
+                MapSetId = ancestor.MapSetId,
+                Mode = ancestor.Mode,
+                Title = ancestor.Title,
+                Artist = ancestor.Artist,
+                Source = ancestor.Source,
+                Tags = ancestor.Tags,
+                Creator = ancestor.Creator,
+                DifficultyName = ours.DifficultyName + " + " + theirs.DifficultyName,
+                Description = "merge result",
+                Genre = ancestor.Genre,
+                InitialScrollVelocity = ancestor.InitialScrollVelocity,
+                HasScratchKey = ancestor.HasScratchKey,
+                CustomAudioSamples = ancestor.CustomAudioSamples
+            };
+            mergeQua.EditorLayers.AddRange(ancestor.EditorLayers);
+            mergeQua.SoundEffects.AddRange(ancestor.SoundEffects);
+            
+            if (ancestor.BPMDoesNotAffectScrollVelocity)
+                mergeQua.NormalizeSVs();
+            var objects = GenerateListsFromBlocks(mergeBlocks);
+            mergeQua.HitObjects.AddRange(objects.HitObjects);
+            mergeQua.TimingPoints.AddRange(objects.TimingPoints);
+            mergeQua.SliderVelocities.AddRange(objects.ScrollVelocities);
+            
+            // default behavior: override our file
+            if (mergePath == null)
+                mergeQua.Save(ourPath);
+            // if path is specified, write new file/override existing file
+            else
+                mergeQua.Save(mergePath);
                 
-            return mergeConflict;
+            return mergeConflicts;
+        }
+        
+        private static List<Block> GenerateBlocks(Qua map, int blockSize, int minTime, int maxTime)
+        {
+            List<Block> blocks = new List<Block>();
+            
+            int hitObjectIndex = 0;
+            int timingPointIndex = 0;
+            int scrollVelocityIndex = 0;
+            
+            for (int i = minTime; i < maxTime; i += blockSize)
+            {
+                var block = new Block();
+                while (hitObjectIndex < map.HitObjects.Count && map.HitObjects[hitObjectIndex].StartTime < i + blockSize)
+                {
+                    block.HitObjects.Add(map.HitObjects[hitObjectIndex]);
+                    hitObjectIndex++;
+                }
+                while (timingPointIndex < map.TimingPoints.Count && map.TimingPoints[timingPointIndex].StartTime < i + blockSize)
+                {
+                    block.TimingPoints.Add(map.TimingPoints[timingPointIndex]);
+                    timingPointIndex++;
+                }
+                while (scrollVelocityIndex < map.SliderVelocities.Count && map.SliderVelocities[scrollVelocityIndex].StartTime < i + blockSize)
+                {
+                    block.ScrollVelocities.Add(map.SliderVelocities[scrollVelocityIndex]);
+                    scrollVelocityIndex++;
+                }
+                blocks.Add(block);
+            }
+            
+            return blocks;
+        }
+        
+        private static (List<HitObjectInfo> HitObjects, List<TimingPointInfo> TimingPoints, List<SliderVelocityInfo> ScrollVelocities) GenerateListsFromBlocks(List<Block> blocks)
+        {
+            List<HitObjectInfo> hitObjects = new List<HitObjectInfo>();
+            List<TimingPointInfo> timingPoints = new List<TimingPointInfo>();
+            List<SliderVelocityInfo> scrollVelocities = new List<SliderVelocityInfo>();
+            
+            foreach (Block block in blocks)
+            {
+                hitObjects.AddRange(block.HitObjects);
+                timingPoints.AddRange(block.TimingPoints);
+                scrollVelocities.AddRange(block.ScrollVelocities);
+            }
+            
+            return (hitObjects, timingPoints, scrollVelocities);
         }
     }
 }
