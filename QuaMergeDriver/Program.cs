@@ -52,6 +52,8 @@ namespace QuaMergeDriver
                           Math.Min(theirs.HitObjects[0].StartTime,
                           Math.Min((int)theirs.TimingPoints[0].StartTime,
                                    (int)theirs.SliderVelocities[0].StartTime))))))));
+                                   
+            Console.WriteLine("minTime: " + minTime);
                           
             int maxTime = Math.Max(ancestor.HitObjects.Last().StartTime, 
                           Math.Max((int)ancestor.TimingPoints.Last().StartTime,
@@ -62,6 +64,8 @@ namespace QuaMergeDriver
                           Math.Max(theirs.HitObjects.Last().StartTime,
                           Math.Max((int)theirs.TimingPoints.Last().StartTime,
                                    (int)theirs.SliderVelocities.Last().StartTime))))))));
+                                   
+            Console.WriteLine("maxTime: " + maxTime);
             
             List<Block> ancestorBlocks = GenerateBlocks(ancestor, blockSize, minTime, maxTime);
             List<Block> ourBlocks = GenerateBlocks(ours, blockSize, minTime, maxTime);
@@ -117,8 +121,8 @@ namespace QuaMergeDriver
             mergeQua.EditorLayers.AddRange(ancestor.EditorLayers);
             mergeQua.SoundEffects.AddRange(ancestor.SoundEffects);
             
-            if (ancestor.BPMDoesNotAffectScrollVelocity)
-                mergeQua.NormalizeSVs();
+            /*if (ancestor.BPMDoesNotAffectScrollVelocity)
+                mergeQua.NormalizeSVs();*/
             var objects = GenerateListsFromBlocks(mergeBlocks);
             mergeQua.HitObjects.AddRange(objects.HitObjects);
             mergeQua.TimingPoints.AddRange(objects.TimingPoints);
@@ -144,7 +148,12 @@ namespace QuaMergeDriver
             
             for (int i = minTime; i < maxTime; i += blockSize)
             {
-                var block = new Block();
+                var block = new Block()
+                {
+                    HitObjects = new List<HitObjectInfo>(),
+                    TimingPoints = new List<TimingPointInfo>(),
+                    ScrollVelocities = new List<SliderVelocityInfo>()
+                };
                 while (hitObjectIndex < map.HitObjects.Count && map.HitObjects[hitObjectIndex].StartTime < i + blockSize)
                 {
                     block.HitObjects.Add(map.HitObjects[hitObjectIndex]);
