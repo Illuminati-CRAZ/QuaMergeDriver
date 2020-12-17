@@ -1,4 +1,5 @@
-﻿using System;
+using ListDiff;﻿
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -16,8 +17,7 @@ namespace QuaMergeDriver
             string ourPath = args[1];
             string theirPath = args[2];
             
-            // temporary
-            string mergePath = "test/merged.qua";
+            string mergePath = args[4];
             
             int blockSize = Int32.Parse(args[3]);
             
@@ -74,6 +74,27 @@ namespace QuaMergeDriver
             List<Block> mergeBlocks = new List<Block>();
             int mergeConflicts = 0;
             
+            // merge editor layers
+            List<EditorLayerInfo> mergeLayers = new List<EditorLayerInfo>();
+            if (ours.EditorLayers.SequenceEqual(theirs.EditorLayers, EditorLayerInfo.ByValueComparer))
+                mergeLayers = ours.EditorLayers;
+            else
+            {
+                if (ours.EditorLayers.SequenceEqual(ancestor.EditorLayers, EditorLayerInfo.ByValueComparer))
+                    mergeLayers = theirs.EditorLayers;
+                else if (theirs.EditorLayers.SequenceEqual(ancestor.EditorLayers, EditorLayerInfo.ByValueComparer))
+                    mergeLayers = ours.EditorLayers;
+                else
+                {
+                    // probably just take the union of the lists
+                    // ask user which layer(s) to go before others? (does that work in a merge driver?)
+                    // after that need to change notes' layers accordingly
+                    // TODO: figure out what to do here
+                    mergeConflicts++;
+                }
+            }
+            
+            // merge blocks
             for (int i = 0; i < ancestorBlocks.Count; i++)
             {
                 // if our and their block are the same, using either block for the merge works
@@ -103,22 +124,22 @@ namespace QuaMergeDriver
                 SongPreviewTime = ancestor.SongPreviewTime,
                 BackgroundFile = ancestor.BackgroundFile,
                 BannerFile = ancestor.BannerFile,
-                MapId = -1,
+                MapId = ancestor.MapId,
                 MapSetId = ancestor.MapSetId,
-                Mode = ancestor.Mode,
+                Mode = ancestor.Mode, // why would anyone merge 4k and 7k together
                 Title = ancestor.Title,
                 Artist = ancestor.Artist,
                 Source = ancestor.Source,
                 Tags = ancestor.Tags,
                 Creator = ancestor.Creator,
-                DifficultyName = ours.DifficultyName + " + " + theirs.DifficultyName,
-                Description = "merge result",
+                DifficultyName = ours.DifficultyName + " + " + theirs.DifficultyName, //temp
+                Description = "merge result", //temp
                 Genre = ancestor.Genre,
                 InitialScrollVelocity = ancestor.InitialScrollVelocity,
                 HasScratchKey = ancestor.HasScratchKey,
-                CustomAudioSamples = ancestor.CustomAudioSamples
+                CustomAudioSamples = ancestor.CustomAudioSamples // I suspect will have to work like layer merging
             };
-            mergeQua.EditorLayers.AddRange(ancestor.EditorLayers);
+            mergeQua.EditorLayers.AddRange(mergeLayers);
             mergeQua.SoundEffects.AddRange(ancestor.SoundEffects);
             
             /*if (ancestor.BPMDoesNotAffectScrollVelocity)
@@ -128,10 +149,10 @@ namespace QuaMergeDriver
             mergeQua.TimingPoints.AddRange(objects.TimingPoints);
             mergeQua.SliderVelocities.AddRange(objects.ScrollVelocities);
             
-            // default behavior: override our file
+            // git expected behavior: overwrite our file
             if (mergePath == null)
                 mergeQua.Save(ourPath);
-            // if path is specified, write new file/override existing file
+            // if path is specified, write new file/overwrite existing file
             else
                 mergeQua.Save(mergePath);
                 
