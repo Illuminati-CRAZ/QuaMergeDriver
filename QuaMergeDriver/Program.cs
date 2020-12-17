@@ -77,6 +77,11 @@ namespace QuaMergeDriver
                         if (layerMoves.Keys.Contains(hitObject.EditorLayer))
                             hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
                     }
+                    foreach (var hitObject in ancestor.HitObjects)
+                    {
+                        if (layerMoves.Keys.Contains(hitObject.EditorLayer))
+                            hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
+                    }
                 }
                 else if (theirs.EditorLayers.SequenceEqual(ancestor.EditorLayers, EditorLayerInfo.ByValueComparer))
                 {
@@ -88,12 +93,17 @@ namespace QuaMergeDriver
                         if (action.ActionType != ListDiffActionType.Add)
                         {
                             int sourceLayer = theirs.EditorLayers.FindIndex(x => x == action.SourceItem) + 1;
-                            Console.WriteLine($"Which layer should our layer {sourceLayer} notes merge to?");
+                            Console.WriteLine($"Which layer should their layer {sourceLayer} notes merge to?");
                             int destLayer = Convert.ToInt32(Console.ReadLine());
                             layerMoves.Add(sourceLayer, destLayer);
                         }
                     }
                     foreach (var hitObject in theirs.HitObjects)
+                    {
+                        if (layerMoves.Keys.Contains(hitObject.EditorLayer))
+                            hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
+                    }
+                    foreach (var hitObject in ancestor.HitObjects)
                     {
                         if (layerMoves.Keys.Contains(hitObject.EditorLayer))
                             hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
@@ -107,6 +117,7 @@ namespace QuaMergeDriver
                     // after that need to change notes' layers accordingly
                     // TODO: figure out what to do here
                     mergeConflicts++;
+                    Console.Write("Merge Conflict in Layers");
                 }
             }
             
@@ -161,7 +172,10 @@ namespace QuaMergeDriver
                     // both have changed, requires manual editting by user
                     // TODO: figure out wtf to do here
                     else
+                    {
                         mergeConflicts++;
+                        Console.Write($"Merge Conflict when merging block {i}");
+                    }
                 }
             }
             
