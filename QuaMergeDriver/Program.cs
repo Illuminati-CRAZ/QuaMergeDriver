@@ -22,6 +22,7 @@ namespace QuaMergeDriver
             int blockSize = Int32.Parse(args[3]);
             
             int mergeConflicts = Merge(ancestorPath, ourPath, theirPath, blockSize, mergePath);
+            Console.WriteLine(mergeConflicts);
             return mergeConflicts;
         }
         
@@ -42,6 +43,72 @@ namespace QuaMergeDriver
             ancestor.Sort();
             ours.Sort();
             theirs.Sort();
+            
+            int mergeConflicts = 0;
+            
+            Console.WriteLine("Merging Layers...");
+            
+            // merge editor layers
+            // what if a layer is removed from one branch but not other?
+            // what happens to the notes?
+            // if any change is detected to a layer, ask user what layer to put notes in
+            List<EditorLayerInfo> mergeLayers = new List<EditorLayerInfo>();
+            if (ours.EditorLayers.SequenceEqual(theirs.EditorLayers, EditorLayerInfo.ByValueComparer))
+                mergeLayers = ours.EditorLayers;
+            else
+            {
+                if (ours.EditorLayers.SequenceEqual(ancestor.EditorLayers, EditorLayerInfo.ByValueComparer))
+                {
+                    mergeLayers = theirs.EditorLayers;
+                    var layerMoves = new Dictionary<int, int>();
+                    var diff = new ListDiff<EditorLayerInfo, EditorLayerInfo>(ours.EditorLayers, theirs.EditorLayers, EditorLayerInfo.ByValueComparer.Equals);
+                    foreach (var action in diff.Actions)
+                    {
+                        if (action.ActionType != ListDiffActionType.Add)
+                        {
+                            int sourceLayer = ours.EditorLayers.FindIndex(x => x == action.SourceItem) + 1;
+                            Console.WriteLine($"Which layer should our layer {sourceLayer} notes merge to?");
+                            int destLayer = Convert.ToInt32(Console.ReadLine());
+                            layerMoves.Add(sourceLayer, destLayer);
+                        }
+                    }
+                    foreach (var hitObject in ours.HitObjects)
+                    {
+                        if (layerMoves.Keys.Contains(hitObject.EditorLayer))
+                            hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
+                    }
+                }
+                else if (theirs.EditorLayers.SequenceEqual(ancestor.EditorLayers, EditorLayerInfo.ByValueComparer))
+                {
+                    mergeLayers = ours.EditorLayers;
+                    var layerMoves = new Dictionary<int, int>();
+                    var diff = new ListDiff<EditorLayerInfo, EditorLayerInfo>(theirs.EditorLayers, ours.EditorLayers, EditorLayerInfo.ByValueComparer.Equals);
+                    foreach (var action in diff.Actions)
+                    {
+                        if (action.ActionType != ListDiffActionType.Add)
+                        {
+                            int sourceLayer = theirs.EditorLayers.FindIndex(x => x == action.SourceItem) + 1;
+                            Console.WriteLine($"Which layer should our layer {sourceLayer} notes merge to?");
+                            int destLayer = Convert.ToInt32(Console.ReadLine());
+                            layerMoves.Add(sourceLayer, destLayer);
+                        }
+                    }
+                    foreach (var hitObject in theirs.HitObjects)
+                    {
+                        if (layerMoves.Keys.Contains(hitObject.EditorLayer))
+                            hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
+                    }
+                }
+                else
+                {
+                    // probably just take the union of the lists
+                    // ask user which layer(s) to go before others? (does that work in a merge driver?)
+                    // what if user wants to combine the different layers into one layer?
+                    // after that need to change notes' layers accordingly
+                    // TODO: figure out what to do here
+                    mergeConflicts++;
+                }
+            }
             
             int minTime = Math.Min(ancestor.HitObjects[0].StartTime, 
                           Math.Min((int)ancestor.TimingPoints[0].StartTime,
@@ -66,33 +133,15 @@ namespace QuaMergeDriver
                                    (int)theirs.SliderVelocities.Last().StartTime))))))));
                                    
             Console.WriteLine("maxTime: " + maxTime);
+            Console.WriteLine("Generating Blocks...");
             
             List<Block> ancestorBlocks = GenerateBlocks(ancestor, blockSize, minTime, maxTime);
             List<Block> ourBlocks = GenerateBlocks(ours, blockSize, minTime, maxTime);
             List<Block> theirBlocks = GenerateBlocks(theirs, blockSize, minTime, maxTime);
             
             List<Block> mergeBlocks = new List<Block>();
-            int mergeConflicts = 0;
             
-            // merge editor layers
-            List<EditorLayerInfo> mergeLayers = new List<EditorLayerInfo>();
-            if (ours.EditorLayers.SequenceEqual(theirs.EditorLayers, EditorLayerInfo.ByValueComparer))
-                mergeLayers = ours.EditorLayers;
-            else
-            {
-                if (ours.EditorLayers.SequenceEqual(ancestor.EditorLayers, EditorLayerInfo.ByValueComparer))
-                    mergeLayers = theirs.EditorLayers;
-                else if (theirs.EditorLayers.SequenceEqual(ancestor.EditorLayers, EditorLayerInfo.ByValueComparer))
-                    mergeLayers = ours.EditorLayers;
-                else
-                {
-                    // probably just take the union of the lists
-                    // ask user which layer(s) to go before others? (does that work in a merge driver?)
-                    // after that need to change notes' layers accordingly
-                    // TODO: figure out what to do here
-                    mergeConflicts++;
-                }
-            }
+            Console.WriteLine("Merging Blocks...");
             
             // merge blocks
             for (int i = 0; i < ancestorBlocks.Count; i++)
@@ -112,10 +161,11 @@ namespace QuaMergeDriver
                     // both have changed, requires manual editting by user
                     // TODO: figure out wtf to do here
                     else
-                        mergeBlocks.Add(ancestorBlocks[i]); // temporary
                         mergeConflicts++;
                 }
             }
+            
+            Console.WriteLine("Generating Merged Map");
             
             // TODO: update
             Qua mergeQua = new Qua
@@ -148,6 +198,8 @@ namespace QuaMergeDriver
             mergeQua.HitObjects.AddRange(objects.HitObjects);
             mergeQua.TimingPoints.AddRange(objects.TimingPoints);
             mergeQua.SliderVelocities.AddRange(objects.ScrollVelocities);
+            
+            Console.WriteLine("Writing .qua File at " + mergePath);
             
             // git expected behavior: overwrite our file
             if (mergePath == null)
