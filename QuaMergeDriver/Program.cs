@@ -122,7 +122,7 @@ namespace QuaMergeDriver
                     Console.WriteLine("Merge Conflict in Layers");
                     Console.WriteLine("How should it be resolved?");
                     Console.WriteLine("1. merge theirs into ours (1, 2, +3, +4 + 1, 2, +3 = 1, 2, +3(ours), +4(ours))");
-                    Console.WriteLine("2. merge ours into theirs (1, 2, +3, +4 + 1, 2, +3 = 1, 2, +3(ours), +4(theirs))");
+                    Console.WriteLine("2. merge ours into theirs (1, 2, +3, +4 + 1, 2, +3 = 1, 2, +3(theirs), +4(ours))");
                     Console.WriteLine("3. ours then theirs (1, 2, +3, +4 + 1, 2, +3 = 1, 2, +3(ours), +4(ours), +3(theirs)");
                     Console.WriteLine("4. theirs then ours (1, 2, +3, +4 + 1, 2, +3 = 1, 2, +3(theirs), +3(ours), +4(ours)");
                     Console.WriteLine("5. only ours");
@@ -192,7 +192,7 @@ namespace QuaMergeDriver
                             var layerMoves = new Dictionary<int, int>();
                             for (int oldLayerIndex = 1; oldLayerIndex < theirs.EditorLayers.Count + 1; oldLayerIndex++)
                             {
-                                Console.Write($"Which layer should their layer {oldLayerIndex} notes go to?");
+                                Console.Write($"Which layer should their layer {oldLayerIndex} notes go to? ");
                                 int newLayerIndex = Convert.ToInt32(Console.ReadLine());
                                 layerMoves.Add(oldLayerIndex, newLayerIndex);
                             }
@@ -214,7 +214,7 @@ namespace QuaMergeDriver
                             var layerMoves = new Dictionary<int, int>();
                             for (int oldLayerIndex = 1; oldLayerIndex < ours.EditorLayers.Count + 1; oldLayerIndex++)
                             {
-                                Console.Write($"Which layer should our layer {oldLayerIndex} notes go to?");
+                                Console.Write($"Which layer should our layer {oldLayerIndex} notes go to? ");
                                 int newLayerIndex = Convert.ToInt32(Console.ReadLine());
                                 layerMoves.Add(oldLayerIndex, newLayerIndex);
                             }
