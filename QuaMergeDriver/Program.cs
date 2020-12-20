@@ -375,7 +375,7 @@ namespace QuaMergeDriver
             int timingPointIndex = 0;
             int scrollVelocityIndex = 0;
             
-            for (int i = minTime; i < maxTime; i += blockSize)
+            for (int i = minTime; i <= maxTime; i += blockSize)
             {
                 var block = new Block()
                 {
