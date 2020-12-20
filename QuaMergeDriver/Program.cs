@@ -28,7 +28,7 @@ namespace QuaMergeDriver
         
         private static int Merge(string ancestorPath, string ourPath, string theirPath, int blockSize = 1000, string mergePath = null)
         {
-            // hit objects, timing points, scroll velocities, preview points, editor layers
+            // hitobjects, timing points, scroll velocities, preview points, editor layers
             // key counts, diff names
             // audio file, background file, banner file
             // map id, mapset id
@@ -283,11 +283,40 @@ namespace QuaMergeDriver
                     else if (theirBlocks[i].Equals(ancestorBlocks[i]))
                         mergeBlocks.Add(ourBlocks[i]);
                     // both have changed, requires manual editting by user
-                    // TODO: figure out wtf to do here
+                    // this could be rewritten to just check each object type's block instead of whole blocks
+                    // alternatively, check blocks, and then handle each type when merge conflict
+                    // because maybe the SV relies on hitobjects or something
                     else
                     {
-                        mergeConflicts++;
-                        Console.WriteLine($"Merge Conflict when merging block {i}");
+                        List<HitObjectInfo> hitObjects;
+                        List<TimingPointInfo> timingPoints;
+                        List<SliderVelocityInfo> scrollVelocities;
+                        
+                        if (!ourBlocks[i].HitObjects.SequenceEqual(theirBlocks[i].HitObjects, HitObjectInfo.ByValueComparer))
+                        {
+                            Console.WriteLine($"Hitobject merge conflict in block {i}");
+                            hitObjects = HandleBlockObjectMergeConflict<HitObjectInfo>(ourBlocks[i].HitObjects, theirBlocks[i].HitObjects, HitObjectInfo.ByValueComparer, ref mergeConflicts);
+                        }
+                        else
+                            hitObjects = ourBlocks[i].HitObjects;
+                            
+                        if (!ourBlocks[i].TimingPoints.SequenceEqual(theirBlocks[i].TimingPoints, TimingPointInfo.ByValueComparer))
+                        {
+                            Console.WriteLine($"Timing point merge conflict in block {i}");
+                            timingPoints = HandleBlockObjectMergeConflict<TimingPointInfo>(ourBlocks[i].TimingPoints, theirBlocks[i].TimingPoints, TimingPointInfo.ByValueComparer, ref mergeConflicts);
+                        }
+                        else
+                            timingPoints = ourBlocks[i].TimingPoints;
+                            
+                        if (!ourBlocks[i].ScrollVelocities.SequenceEqual(theirBlocks[i].ScrollVelocities, SliderVelocityInfo.ByValueComparer))
+                        {
+                            Console.WriteLine($"Scroll velocity merge conflict in block {i}");
+                            scrollVelocities = HandleBlockObjectMergeConflict<SliderVelocityInfo>(ourBlocks[i].ScrollVelocities, theirBlocks[i].ScrollVelocities, SliderVelocityInfo.ByValueComparer, ref mergeConflicts);
+                        }
+                        else
+                            scrollVelocities = ourBlocks[i].ScrollVelocities;
+                            
+                        mergeBlocks.Add(new Block(hitObjects, timingPoints, scrollVelocities));
                     }
                 }
             }
@@ -389,6 +418,38 @@ namespace QuaMergeDriver
             }
             
             return (hitObjects, timingPoints, scrollVelocities);
+        }
+        
+        private static List<T> HandleBlockObjectMergeConflict<T>(List<T> ours, List<T> theirs, IEqualityComparer<T> byValueComparer, ref int mergeConflicts)
+        {
+            Console.WriteLine("How should the conflict be handled?");
+            Console.WriteLine("1. Use ours");
+            Console.WriteLine("2. Use theirs");
+            Console.WriteLine("3. Use both");
+            Console.WriteLine("4. Use neither (manually handle)");
+            
+            int input = Convert.ToInt32(Console.ReadLine());
+            switch (input)
+            {
+                case 1:
+                {
+                    return ours;
+                }
+                case 2:
+                {
+                    return theirs;
+                }
+                case 3:
+                {
+                    // should mean no stacked notes that result from merging
+                    return ours.Union(theirs, byValueComparer).ToList();
+                }
+                default:
+                {
+                    mergeConflicts++;
+                    return new List<T>();
+                }
+            }
         }
     }
 }
