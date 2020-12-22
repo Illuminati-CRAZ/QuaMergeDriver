@@ -4,9 +4,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using QuaMergeDriver.Structures;
+using Quaver.API.Enums;
 using Quaver.API.Maps;
 using Quaver.API.Maps.Structures;
-using YamlDotNet.Serialization;
 
 namespace QuaMergeDriver
 {
@@ -35,9 +35,9 @@ namespace QuaMergeDriver
             // tags, creator, description, genre
             // initial sv, sv mode, scratch key
             // custom audio samples, sound effects
-            Qua ancestor = Qua.Parse(ancestorPath);
-            Qua ours = Qua.Parse(ourPath);
-            Qua theirs = Qua.Parse(theirPath);
+            Qua ancestor = Qua.Parse(ancestorPath, false);
+            Qua ours = Qua.Parse(ourPath, false);
+            Qua theirs = Qua.Parse(theirPath, false);
             
             ancestor.Sort();
             ours.Sort();
@@ -233,29 +233,85 @@ namespace QuaMergeDriver
                 }
             }
             
-            int minTime = Math.Min(ancestor.HitObjects[0].StartTime, 
-                          Math.Min((int)ancestor.TimingPoints[0].StartTime,
-                          Math.Min((int)ancestor.SliderVelocities[0].StartTime,
-                          Math.Min(ours.HitObjects[0].StartTime,
-                          Math.Min((int)ours.TimingPoints[0].StartTime,
-                          Math.Min((int)ours.SliderVelocities[0].StartTime,
-                          Math.Min(theirs.HitObjects[0].StartTime,
-                          Math.Min((int)theirs.TimingPoints[0].StartTime,
-                                   (int)theirs.SliderVelocities[0].StartTime))))))));
+            float? minTime = new float?[9]
+            {
+                ancestor.HitObjects.Count > 0 ? (float)ancestor.HitObjects[0].StartTime : (float?)null,
+                ancestor.TimingPoints.Count > 0 ? ancestor.TimingPoints[0].StartTime : (float?)null,
+                ancestor.SliderVelocities.Count > 0 ? ancestor.SliderVelocities[0].StartTime : (float?)null,
+                ours.HitObjects.Count > 0 ? (float)ours.HitObjects[0].StartTime : (float?)null,
+                ours.TimingPoints.Count > 0 ? ours.TimingPoints[0].StartTime : (float?)null,
+                ours.SliderVelocities.Count > 0 ? ours.SliderVelocities[0].StartTime : (float?)null,
+                theirs.HitObjects.Count > 0 ? (float)theirs.HitObjects[0].StartTime : (float?)null,
+                theirs.TimingPoints.Count > 0 ? theirs.TimingPoints[0].StartTime : (float?)null,
+                theirs.SliderVelocities.Count > 0 ? theirs.SliderVelocities[0].StartTime : (float?)null
+            }.Min();
                                    
             Console.WriteLine("minTime: " + minTime);
                           
-            int maxTime = Math.Max(ancestor.HitObjects.Last().StartTime, 
-                          Math.Max((int)ancestor.TimingPoints.Last().StartTime,
-                          Math.Max((int)ancestor.SliderVelocities.Last().StartTime,
-                          Math.Max(ours.HitObjects.Last().StartTime,
-                          Math.Max((int)ours.TimingPoints.Last().StartTime,
-                          Math.Max((int)ours.SliderVelocities.Last().StartTime,
-                          Math.Max(theirs.HitObjects.Last().StartTime,
-                          Math.Max((int)theirs.TimingPoints.Last().StartTime,
-                                   (int)theirs.SliderVelocities.Last().StartTime))))))));
+            float? maxTime = new float?[9]
+            {
+                ancestor.HitObjects.Count > 0 ? (float)ancestor.HitObjects.Last().StartTime : (float?)null,
+                ancestor.TimingPoints.Count > 0 ? ancestor.TimingPoints.Last().StartTime : (float?)null,
+                ancestor.SliderVelocities.Count > 0 ? ancestor.SliderVelocities.Last().StartTime : (float?)null,
+                ours.HitObjects.Count > 0 ? (float)ours.HitObjects.Last().StartTime : (float?)null,
+                ours.TimingPoints.Count > 0 ? ours.TimingPoints.Last().StartTime : (float?)null,
+                ours.SliderVelocities.Count > 0 ? ours.SliderVelocities.Last().StartTime : (float?)null,
+                theirs.HitObjects.Count > 0 ? (float)theirs.HitObjects.Last().StartTime : (float?)null,
+                theirs.TimingPoints.Count > 0 ? theirs.TimingPoints.Last().StartTime : (float?)null,
+                theirs.SliderVelocities.Count > 0 ? theirs.SliderVelocities.Last().StartTime : (float?)null
+            }.Max();
                                    
             Console.WriteLine("maxTime: " + maxTime);
+            
+            List<Block> mergeBlocks;
+            if (minTime != null && maxTime != null)
+                mergeBlocks = GenerateMergeBlocks(ancestor, ours, theirs, (float)minTime, (float)maxTime, blockSize, ref mergeConflicts);
+            else
+                mergeBlocks = new List<Block>();
+            
+            Console.WriteLine("Generating Merged Map");
+            
+            Qua mergeQua = new Qua
+            {
+                AudioFile = MergeMetadata<string>(ancestor.AudioFile, ours.AudioFile, theirs.AudioFile, "MERGE CONFLICT", ref mergeConflicts),
+                SongPreviewTime = MergeMetadata<int>(ancestor.SongPreviewTime, ours.SongPreviewTime, theirs.SongPreviewTime, -1, ref mergeConflicts),
+                BackgroundFile = MergeMetadata<string>(ancestor.BackgroundFile, ours.BackgroundFile, theirs.BackgroundFile, "MERGE CONFLICT", ref mergeConflicts),
+                BannerFile = MergeMetadata<string>(ancestor.BannerFile, ours.BannerFile, theirs.BannerFile, "MERGE CONFLICT", ref mergeConflicts),
+                MapId = MergeMetadata<int>(ancestor.MapId, ours.MapId, theirs.MapId, -1, ref mergeConflicts),
+                MapSetId = MergeMetadata<int>(ancestor.MapSetId, ours.MapSetId, theirs.MapSetId, -1, ref mergeConflicts),
+                // why would anyone merge 4k and 7k together
+                Mode = MergeMetadata<GameMode>(ancestor.Mode, ours.Mode, theirs.Mode, GameMode.Keys7, ref mergeConflicts),
+                Title = MergeMetadata<string>(ancestor.Title, ours.Title, theirs.Title, "MERGE CONFLICT", ref mergeConflicts),
+                Artist = MergeMetadata<string>(ancestor.Artist, ours.Artist, theirs.Artist, "MERGE CONFLICT", ref mergeConflicts),
+                Source = MergeMetadata<string>(ancestor.Source, ours.Source, theirs.Source, "MERGE CONFLICT", ref mergeConflicts),
+                Tags = MergeMetadata<string>(ancestor.Tags, ours.Tags, theirs.Tags, "MERGE CONFLICT", ref mergeConflicts),
+                Creator = MergeMetadata<string>(ancestor.Creator, ours.Creator, theirs.Creator, "MERGE CONFLICT", ref mergeConflicts),
+                DifficultyName = MergeMetadata<string>(ancestor.DifficultyName, ours.DifficultyName, theirs.DifficultyName, "MERGE CONFLICT", ref mergeConflicts),
+                Description = MergeMetadata<string>(ancestor.Description, ours.Description, theirs.Description, "MERGE CONFLICT", ref mergeConflicts),
+                Genre = MergeMetadata<string>(ancestor.Genre, ours.Genre, theirs.Genre, "MERGE CONFLICT", ref mergeConflicts),
+                BPMDoesNotAffectScrollVelocity = MergeMetadata<bool>(ancestor.BPMDoesNotAffectScrollVelocity, ours.BPMDoesNotAffectScrollVelocity, theirs.BPMDoesNotAffectScrollVelocity, true, ref mergeConflicts),
+                InitialScrollVelocity = MergeMetadata<float>(ancestor.InitialScrollVelocity, ours.InitialScrollVelocity, theirs.InitialScrollVelocity, -1, ref mergeConflicts),
+                HasScratchKey = MergeMetadata<bool>(ancestor.HasScratchKey, ours.HasScratchKey, theirs.HasScratchKey, false, ref mergeConflicts),
+                CustomAudioSamples = ours.CustomAudioSamples // I suspect will have to work like layer merging
+            };
+            mergeQua.EditorLayers.AddRange(mergeLayers);
+            mergeQua.SoundEffects.AddRange(ours.SoundEffects);
+            
+            var objects = GenerateListsFromBlocks(mergeBlocks);
+            mergeQua.HitObjects.AddRange(objects.HitObjects);
+            mergeQua.TimingPoints.AddRange(objects.TimingPoints);
+            mergeQua.SliderVelocities.AddRange(objects.ScrollVelocities);
+            
+            Console.WriteLine("Writing .qua File at " + ourPath);
+            
+            // git expected behavior: overwrite our file
+            mergeQua.Save(ourPath);
+                
+            return mergeConflicts;
+        }
+        
+        private static List<Block> GenerateMergeBlocks(Qua ancestor, Qua ours, Qua theirs, float minTime, float maxTime, int blockSize, ref int mergeConflicts)
+        {
             Console.WriteLine("Generating Blocks...");
             
             List<Block> ancestorBlocks = GenerateBlocks(ancestor, blockSize, minTime, maxTime);
@@ -320,49 +376,10 @@ namespace QuaMergeDriver
                 }
             }
             
-            Console.WriteLine("Generating Merged Map");
-            
-            // TODO: update
-            Qua mergeQua = new Qua
-            {
-                AudioFile = ancestor.AudioFile,
-                SongPreviewTime = ancestor.SongPreviewTime,
-                BackgroundFile = ancestor.BackgroundFile,
-                BannerFile = ancestor.BannerFile,
-                MapId = ancestor.MapId,
-                MapSetId = ancestor.MapSetId,
-                Mode = ancestor.Mode, // why would anyone merge 4k and 7k together
-                Title = ancestor.Title,
-                Artist = ancestor.Artist,
-                Source = ancestor.Source,
-                Tags = ancestor.Tags,
-                Creator = ancestor.Creator,
-                DifficultyName = ours.DifficultyName + " + " + theirs.DifficultyName, //temp
-                Description = "merge result", //temp
-                Genre = ancestor.Genre,
-                InitialScrollVelocity = ancestor.InitialScrollVelocity,
-                HasScratchKey = ancestor.HasScratchKey,
-                CustomAudioSamples = ancestor.CustomAudioSamples // I suspect will have to work like layer merging
-            };
-            mergeQua.EditorLayers.AddRange(mergeLayers);
-            mergeQua.SoundEffects.AddRange(ancestor.SoundEffects);
-            
-            /*if (ancestor.BPMDoesNotAffectScrollVelocity)
-                mergeQua.NormalizeSVs();*/
-            var objects = GenerateListsFromBlocks(mergeBlocks);
-            mergeQua.HitObjects.AddRange(objects.HitObjects);
-            mergeQua.TimingPoints.AddRange(objects.TimingPoints);
-            mergeQua.SliderVelocities.AddRange(objects.ScrollVelocities);
-            
-            Console.WriteLine("Writing .qua File at " + ourPath);
-            
-            // git expected behavior: overwrite our file
-            mergeQua.Save(ourPath);
-                
-            return mergeConflicts;
+            return mergeBlocks;
         }
         
-        private static List<Block> GenerateBlocks(Qua map, int blockSize, int minTime, int maxTime)
+        private static List<Block> GenerateBlocks(Qua map, int blockSize, float minTime, float maxTime)
         {
             List<Block> blocks = new List<Block>();
             
@@ -370,7 +387,7 @@ namespace QuaMergeDriver
             int timingPointIndex = 0;
             int scrollVelocityIndex = 0;
             
-            for (int i = minTime; i <= maxTime; i += blockSize)
+            for (float i = minTime; i <= maxTime; i += blockSize)
             {
                 var block = new Block()
                 {
@@ -447,18 +464,18 @@ namespace QuaMergeDriver
             }
         }
         
-        public static T MergeMetadata<T>(T ancestor, T ours, T theirs, ref int mergeConflicts)
+        public static T MergeMetadata<T>(T ancestor, T ours, T theirs, T conflict, ref int mergeConflicts)
         {
-            if (ours.Equals(theirs))
+            if (Equals(ours, theirs))
                 return ours;
-            else if (ours.Equals(ancestor))
+            else if (Equals(ours, ancestor))
                 return theirs;
-            else if (theirs.Equals(ancestor))
+            else if (Equals(theirs, ancestor))
                 return ours;
             else
             {
                 mergeConflicts++;
-                return default(T);
+                return conflict;
             }
         }
     }
