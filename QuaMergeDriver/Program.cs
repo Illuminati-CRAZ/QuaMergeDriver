@@ -6,6 +6,7 @@ using System.Linq;
 using QuaMergeDriver.Structures;
 using Quaver.API.Maps;
 using Quaver.API.Maps.Structures;
+using YamlDotNet.Serialization;
 
 namespace QuaMergeDriver
 {
@@ -17,16 +18,14 @@ namespace QuaMergeDriver
             string ourPath = args[1];
             string theirPath = args[2];
             
-            string mergePath = args[4];
-            
             int blockSize = Int32.Parse(args[3]);
             
-            int mergeConflicts = Merge(ancestorPath, ourPath, theirPath, blockSize, mergePath);
+            int mergeConflicts = Merge(ancestorPath, ourPath, theirPath, blockSize);
             Console.WriteLine(mergeConflicts);
             return mergeConflicts;
         }
         
-        private static int Merge(string ancestorPath, string ourPath, string theirPath, int blockSize = 1000, string mergePath = null)
+        private static int Merge(string ancestorPath, string ourPath, string theirPath, int blockSize = 1000)
         {
             // hitobjects, timing points, scroll velocities, preview points, editor layers
             // key counts, diff names
@@ -355,14 +354,10 @@ namespace QuaMergeDriver
             mergeQua.TimingPoints.AddRange(objects.TimingPoints);
             mergeQua.SliderVelocities.AddRange(objects.ScrollVelocities);
             
-            Console.WriteLine("Writing .qua File at " + mergePath);
+            Console.WriteLine("Writing .qua File at " + ourPath);
             
             // git expected behavior: overwrite our file
-            if (mergePath == null)
-                mergeQua.Save(ourPath);
-            // if path is specified, write new file/overwrite existing file
-            else
-                mergeQua.Save(mergePath);
+            mergeQua.Save(ourPath);
                 
             return mergeConflicts;
         }
@@ -449,6 +444,21 @@ namespace QuaMergeDriver
                     mergeConflicts++;
                     return new List<T>();
                 }
+            }
+        }
+        
+        public static T MergeMetadata<T>(T ancestor, T ours, T theirs, ref int mergeConflicts)
+        {
+            if (ours.Equals(theirs))
+                return ours;
+            else if (ours.Equals(ancestor))
+                return theirs;
+            else if (theirs.Equals(ancestor))
+                return ours;
+            else
+            {
+                mergeConflicts++;
+                return default(T);
             }
         }
     }
