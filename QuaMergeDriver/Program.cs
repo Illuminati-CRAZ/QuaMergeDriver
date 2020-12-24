@@ -49,14 +49,14 @@ namespace QuaMergeDriver
             List<EditorLayerInfo> mergeLayers = GenerateIndexBasedMergeObjects<EditorLayerInfo>(ancestor.EditorLayers, ours.EditorLayers, theirs.EditorLayers,
                                                                                                 ancestor.HitObjects, ours.HitObjects, theirs.HitObjects,
                                                                                                 EditorLayerInfo.ByValueComparer,
-                                                                                                typeof(HitObjectInfo).GetProperty("EditorLayer"));
+                                                                                                ApplyLayerIndexChanges);
             
             // untested
             Console.WriteLine("Merging Custom Audio Samples...");
             List<CustomAudioSampleInfo> mergeCustomAudioSamples = GenerateIndexBasedMergeObjects<CustomAudioSampleInfo>(ancestor.CustomAudioSamples, ours.CustomAudioSamples, theirs.CustomAudioSamples,
                                                                                                                         ancestor.HitObjects, ours.HitObjects, theirs.HitObjects,
                                                                                                                         CustomAudioSampleInfo.ByValueComparer,
-                                                                                                                        typeof(HitObjectInfo).GetProperty("KeySounds"));
+                                                                                                                        ApplyKeySoundSampleIndexChanges);
             
             // untested
             Console.WriteLine("Merging Sound Effects...");
@@ -109,7 +109,7 @@ namespace QuaMergeDriver
                 MapId = MergeMetadata<int>(ancestor.MapId, ours.MapId, theirs.MapId, -1, ref mergeConflicts),
                 MapSetId = MergeMetadata<int>(ancestor.MapSetId, ours.MapSetId, theirs.MapSetId, -1, ref mergeConflicts),
                 // why would anyone merge 4k and 7k together
-                Mode = MergeMetadata<GameMode>(ancestor.Mode, ours.Mode, theirs.Mode, GameMode.Keys7, ref mergeConflicts),
+                Mode = MergeMetadata<GameMode>(ancestor.Mode, ours.Mode, theirs.Mode, (GameMode)(-1), ref mergeConflicts),
                 Title = MergeMetadata<string>(ancestor.Title, ours.Title, theirs.Title, "MERGE CONFLICT", ref mergeConflicts),
                 Artist = MergeMetadata<string>(ancestor.Artist, ours.Artist, theirs.Artist, "MERGE CONFLICT", ref mergeConflicts),
                 Source = MergeMetadata<string>(ancestor.Source, ours.Source, theirs.Source, "MERGE CONFLICT", ref mergeConflicts),
@@ -144,7 +144,7 @@ namespace QuaMergeDriver
                                                                  List<HitObjectInfo> ourHitObjects,
                                                                  List<HitObjectInfo> theirHitObjects,
                                                                  IEqualityComparer<T> byValueComparer,
-                                                                 PropertyInfo propertyInfo)
+                                                                 Action<List<HitObjectInfo>, Dictionary<int, int>> applyIndexChanges)
         {
             List<T> mergeResult;
             
@@ -152,21 +152,21 @@ namespace QuaMergeDriver
             {
                 mergeResult = ours;
                 var changes = GenerateIndexChanges(ancestor, mergeResult, byValueComparer);
-                ApplyIndexChanges(ancestorHitObjects, propertyInfo, changes);
+                applyIndexChanges(ancestorHitObjects, changes);
             }
             else if (ours.SequenceEqual(ancestor, byValueComparer))
             {
                 mergeResult = theirs;
                 var changes = GenerateIndexChanges(ancestor, mergeResult, byValueComparer);
-                ApplyIndexChanges(ancestorHitObjects, propertyInfo, changes);
-                ApplyIndexChanges(ourHitObjects, propertyInfo, changes);
+                applyIndexChanges(ancestorHitObjects, changes);
+                applyIndexChanges(ourHitObjects, changes);
             }
             else if (theirs.SequenceEqual(ancestor, byValueComparer))
             {
                 mergeResult = ours;
                 var changes = GenerateIndexChanges(ancestor, mergeResult, byValueComparer);
-                ApplyIndexChanges(ancestorHitObjects, propertyInfo, changes);
-                ApplyIndexChanges(theirHitObjects, propertyInfo, changes);
+                applyIndexChanges(ancestorHitObjects, changes);
+                applyIndexChanges(theirHitObjects, changes);
             }
             else
             {
@@ -186,7 +186,7 @@ namespace QuaMergeDriver
                     {
                         mergeResult = ours;
                         var changes = GenerateIndexChanges(theirs, mergeResult, byValueComparer);
-                        ApplyIndexChanges(theirHitObjects, propertyInfo, changes);
+                        applyIndexChanges(theirHitObjects, changes);
                         break;
                     }
                     
@@ -195,7 +195,7 @@ namespace QuaMergeDriver
                     {
                         mergeResult = theirs;
                         var changes = GenerateIndexChanges(ours, mergeResult, byValueComparer);
-                        ApplyIndexChanges(ourHitObjects, propertyInfo, changes);
+                        applyIndexChanges(ourHitObjects, changes);
                         break;
                     }
                     
@@ -208,7 +208,7 @@ namespace QuaMergeDriver
                             mergeResult.AddRange(theirs.GetRange(ours.Count, layerCountDiff));
                             
                         var changes = GenerateIndexChanges(theirs, mergeResult, byValueComparer);
-                        ApplyIndexChanges(theirHitObjects, propertyInfo, changes);
+                        applyIndexChanges(theirHitObjects, changes);
                         break;
                     }
                     
@@ -221,7 +221,7 @@ namespace QuaMergeDriver
                             mergeResult.AddRange(ours.GetRange(theirs.Count, layerCountDiff));
                             
                         var changes = GenerateIndexChanges(ours, mergeResult, byValueComparer);
-                        ApplyIndexChanges(ourHitObjects, propertyInfo, changes);
+                        applyIndexChanges(ourHitObjects, changes);
                         break;
                     }
                     
@@ -230,7 +230,7 @@ namespace QuaMergeDriver
                     {
                         mergeResult = ours.Union(theirs, byValueComparer).ToList();
                         var changes = GenerateIndexChanges(theirs, mergeResult, byValueComparer);
-                        ApplyIndexChanges(theirHitObjects, propertyInfo, changes);
+                        applyIndexChanges(theirHitObjects, changes);
                         break;
                     }
                     
@@ -239,7 +239,7 @@ namespace QuaMergeDriver
                     {
                         mergeResult = theirs.Union(ours, byValueComparer).ToList();
                         var changes = GenerateIndexChanges(ours, mergeResult, byValueComparer);
-                        ApplyIndexChanges(ourHitObjects, propertyInfo, changes);
+                        applyIndexChanges(ourHitObjects, changes);
                         break;
                     }
                     
@@ -248,14 +248,14 @@ namespace QuaMergeDriver
                     {
                         mergeResult = ours.Union(theirs, byValueComparer).ToList();
                         var changes = GenerateIndexChanges(theirs, mergeResult, byValueComparer);
-                        ApplyIndexChanges(theirHitObjects, propertyInfo, changes);
+                        applyIndexChanges(theirHitObjects, changes);
                         break;
                     }
                 }
                 
                 // C# is dumb
                 var ancestorChanges = GenerateIndexChanges(ancestor, mergeResult, byValueComparer);
-                ApplyIndexChanges(ancestorHitObjects, propertyInfo, ancestorChanges);
+                applyIndexChanges(ancestorHitObjects, ancestorChanges);
             }
             
             return mergeResult;
@@ -274,13 +274,26 @@ namespace QuaMergeDriver
             return changes;
         }
         
-        private static void ApplyIndexChanges(List<HitObjectInfo> hitObjects, PropertyInfo propertyInfo, Dictionary<int, int> changes)
+        private static void ApplyLayerIndexChanges(List<HitObjectInfo> hitObjects, Dictionary<int, int> changes)
         {
             foreach (var hitObject in hitObjects)
             {
-                int oldIndex = (int)propertyInfo.GetValue(hitObject);
-                if (changes.Keys.Contains(oldIndex))
-                    propertyInfo.SetValue(hitObject, changes[oldIndex]);
+                int index = hitObject.EditorLayer;
+                if (changes.Keys.Contains(index))
+                    index = changes[index];
+            }
+        }
+        
+        private static void ApplyKeySoundSampleIndexChanges(List<HitObjectInfo> hitObjects, Dictionary<int, int> changes)
+        {
+            foreach (var hitObject in hitObjects)
+            {
+                foreach (var keySound in hitObject.KeySounds)
+                {
+                    int index = keySound.Sample;
+                    if (changes.Keys.Contains(index))
+                        index = changes[index];
+                }
             }
         }
         
