@@ -52,6 +52,13 @@ namespace QuaMergeDriver
                                                                                                 typeof(HitObjectInfo).GetProperty("EditorLayer"));
             
             // untested
+            Console.WriteLine("Merging Custom Audio Samples...");
+            List<CustomAudioSampleInfo> mergeCustomAudioSamples = GenerateIndexBasedMergeObjects<CustomAudioSampleInfo>(ancestor.CustomAudioSamples, ours.CustomAudioSamples, theirs.CustomAudioSamples,
+                                                                                                                        ancestor.HitObjects, ours.HitObjects, theirs.HitObjects,
+                                                                                                                        CustomAudioSampleInfo.ByValueComparer,
+                                                                                                                        typeof(HitObjectInfo).GetProperty("KeySounds"));
+            
+            // untested
             Console.WriteLine("Merging Sound Effects...");
             List<SoundEffectInfo> mergeSoundEffects = MergeLists(ancestor.SoundEffects, ours.SoundEffects, theirs.SoundEffects, new List<SoundEffectInfo>(), SoundEffectInfo.ByValueComparer, ref mergeConflicts);
             
@@ -114,7 +121,7 @@ namespace QuaMergeDriver
                 BPMDoesNotAffectScrollVelocity = MergeMetadata<bool>(ancestor.BPMDoesNotAffectScrollVelocity, ours.BPMDoesNotAffectScrollVelocity, theirs.BPMDoesNotAffectScrollVelocity, true, ref mergeConflicts),
                 InitialScrollVelocity = MergeMetadata<float>(ancestor.InitialScrollVelocity, ours.InitialScrollVelocity, theirs.InitialScrollVelocity, -1, ref mergeConflicts),
                 HasScratchKey = MergeMetadata<bool>(ancestor.HasScratchKey, ours.HasScratchKey, theirs.HasScratchKey, false, ref mergeConflicts),
-                CustomAudioSamples = ours.CustomAudioSamples // I suspect will have to work like layer merging
+                CustomAudioSamples = mergeCustomAudioSamples
             };
             mergeQua.EditorLayers.AddRange(mergeLayers);
             mergeQua.SoundEffects.AddRange(mergeSoundEffects); // untested
