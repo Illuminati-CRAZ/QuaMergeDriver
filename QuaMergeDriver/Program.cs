@@ -1,8 +1,9 @@
-using ListDiff;﻿
+using ListDiff;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using QuaMergeDriver.Structures;
 using Quaver.API.Enums;
 using Quaver.API.Maps;
@@ -47,7 +48,7 @@ namespace QuaMergeDriver
             
             List<EditorLayerInfo> mergeLayers;
             if (ours.EditorLayers.Count > 0 || theirs.EditorLayers.Count > 0)
-                mergeLayers = GenerateMergeLayers(ancestor, ours, theirs, blockSize, ref mergeConflicts);
+                mergeLayers = GenerateMergeLayers(ancestor, ours, theirs, ref mergeConflicts);
             else
                 mergeLayers = new List<EditorLayerInfo>();
             
@@ -128,7 +129,7 @@ namespace QuaMergeDriver
             return mergeConflicts;
         }
         
-        private static List<EditorLayerInfo> GenerateMergeLayers(Qua ancestor, Qua ours, Qua theirs, int blockSize, ref int mergeConflicts)
+        private static List<EditorLayerInfo> GenerateMergeLayers(Qua ancestor, Qua ours, Qua theirs, ref int mergeConflicts)
         {
             Console.WriteLine("Merging Layers...");
             
@@ -319,6 +320,151 @@ namespace QuaMergeDriver
             }
             
             return mergeLayers;
+        }
+        
+        private static List<T> GenerateIndexBasedMergeObjects<T>(List<T> ancestor, List<T> ours, List<T> theirs,
+                                                                 List<HitObjectInfo> ancestorHitObjects,
+                                                                 List<HitObjectInfo> ourHitObjects,
+                                                                 List<HitObjectInfo> theirHitObjects,
+                                                                 PropertyInfo propertyInfo)
+        {
+            IEqualityComparer<T> byValueComparer = (IEqualityComparer<T>)typeof(T).GetField("ByValueComparer").GetValue(null);
+            List<T> mergeResult;
+            
+            if (ours.SequenceEqual(theirs, byValueComparer))
+            {
+                mergeResult = ours;
+                var changes = GenerateIndexChanges(ancestor, mergeResult, byValueComparer);
+                ApplyIndexChanges(ancestorHitObjects, propertyInfo, changes);
+            }
+            else if (ours.SequenceEqual(ancestor, byValueComparer))
+            {
+                mergeResult = theirs;
+                var changes = GenerateIndexChanges(ancestor, mergeResult, byValueComparer);
+                ApplyIndexChanges(ancestorHitObjects, propertyInfo, changes);
+                ApplyIndexChanges(ourHitObjects, propertyInfo, changes);
+            }
+            else if (theirs.SequenceEqual(ancestor, byValueComparer))
+            {
+                mergeResult = ours;
+                var changes = GenerateIndexChanges(ancestor, mergeResult, byValueComparer);
+                ApplyIndexChanges(ancestorHitObjects, propertyInfo, changes);
+                ApplyIndexChanges(theirHitObjects, propertyInfo, changes);
+            }
+            else
+            {
+                Console.WriteLine("A Merge Conflict Occurred");
+                Console.WriteLine("How should it be handled?");
+                Console.WriteLine("1. Only ours");
+                Console.WriteLine("2. Only theirs");
+                Console.WriteLine("3. Ours then theirs");
+                Console.WriteLine("4. Theirs then ours");
+                Console.WriteLine("5. Merge theirs into ours");
+                Console.WriteLine("6. Merge ours into theirs");
+                int input = Convert.ToInt32(Console.ReadLine());
+                switch (input)
+                {
+                    // only ours
+                    case 1:
+                    {
+                        mergeResult = ours;
+                        var changes = GenerateIndexChanges(theirs, mergeResult, byValueComparer);
+                        ApplyIndexChanges(theirHitObjects, propertyInfo, changes);
+                        break;
+                    }
+                    
+                    // only theirs
+                    case 2:
+                    {
+                        mergeResult = theirs;
+                        var changes = GenerateIndexChanges(ours, mergeResult, byValueComparer);
+                        ApplyIndexChanges(ourHitObjects, propertyInfo, changes);
+                        break;
+                    }
+                    
+                    // ours then theirs
+                    case 3:
+                    {
+                        int layerCountDiff = theirs.Count - ours.Count;
+                        mergeResult = ours;
+                        if (layerCountDiff > 0)
+                            mergeResult.AddRange(theirs.GetRange(ours.Count, layerCountDiff));
+                            
+                        var changes = GenerateIndexChanges(theirs, mergeResult, byValueComparer);
+                        ApplyIndexChanges(theirHitObjects, propertyInfo, changes);
+                        break;
+                    }
+                    
+                    // theirs then ours
+                    case 4:
+                    {
+                        int layerCountDiff = ours.Count - theirs.Count;
+                        mergeResult = theirs;
+                        if (layerCountDiff > 0)
+                            mergeResult.AddRange(ours.GetRange(theirs.Count, layerCountDiff));
+                            
+                        var changes = GenerateIndexChanges(ours, mergeResult, byValueComparer);
+                        ApplyIndexChanges(ourHitObjects, propertyInfo, changes);
+                        break;
+                    }
+                    
+                    // merge theirs into ours
+                    case 5:
+                    {
+                        mergeResult = ours.Union(theirs, byValueComparer).ToList();
+                        var changes = GenerateIndexChanges(theirs, mergeResult, byValueComparer);
+                        ApplyIndexChanges(theirHitObjects, propertyInfo, changes);
+                        break;
+                    }
+                    
+                    // merge ours into theirs
+                    case 6:
+                    {
+                        mergeResult = theirs.Union(ours, byValueComparer).ToList();
+                        var changes = GenerateIndexChanges(ours, mergeResult, byValueComparer);
+                        ApplyIndexChanges(ourHitObjects, propertyInfo, changes);
+                        break;
+                    }
+                    
+                    // merge theirs into ours
+                    default:
+                    {
+                        mergeResult = ours.Union(theirs, byValueComparer).ToList();
+                        var changes = GenerateIndexChanges(theirs, mergeResult, byValueComparer);
+                        ApplyIndexChanges(theirHitObjects, propertyInfo, changes);
+                        break;
+                    }
+                }
+                
+                // C# is dumb
+                var ancestorChanges = GenerateIndexChanges(ancestor, mergeResult, byValueComparer);
+                ApplyIndexChanges(ancestorHitObjects, propertyInfo, ancestorChanges);
+            }
+            
+            return mergeResult;
+        }
+        
+        private static Dictionary<int, int> GenerateIndexChanges<T>(List<T> source, List<T> dest, IEqualityComparer<T> byValueComparer)
+        {
+            var changes = new Dictionary<int, int>();
+            for (int oldIndex = 0; oldIndex < source.Count; oldIndex++)
+            {
+                int newIndex = dest.FindIndex(x => byValueComparer.Equals(x, source[oldIndex]));
+                if (oldIndex != newIndex)
+                    changes.Add(oldIndex + 1, newIndex + 1);
+            }
+            
+            return changes;
+        }
+        
+        private static void ApplyIndexChanges(List<HitObjectInfo> hitObjects, PropertyInfo propertyInfo, Dictionary<int, int> changes)
+        {
+            foreach (var hitObject in hitObjects)
+            {
+                int oldIndex = (int)propertyInfo.GetValue(hitObject);
+                if (changes.Keys.Contains(oldIndex))
+                    propertyInfo.SetValue(hitObject, changes[oldIndex]);
+            }
         }
         
         private static List<Block> GenerateMergeBlocks(Qua ancestor, Qua ours, Qua theirs, float minTime, float maxTime, int blockSize, ref int mergeConflicts)
