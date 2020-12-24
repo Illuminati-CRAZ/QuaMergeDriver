@@ -45,10 +45,15 @@ namespace QuaMergeDriver
             
             int mergeConflicts = 0;
             
+            Console.WriteLine("Merging Layers...");
             List<EditorLayerInfo> mergeLayers = GenerateIndexBasedMergeObjects<EditorLayerInfo>(ancestor.EditorLayers, ours.EditorLayers, theirs.EditorLayers,
                                                                                                 ancestor.HitObjects, ours.HitObjects, theirs.HitObjects,
                                                                                                 EditorLayerInfo.ByValueComparer,
                                                                                                 typeof(HitObjectInfo).GetProperty("EditorLayer"));
+            
+            // untested
+            Console.WriteLine("Merging Sound Effects...");
+            List<SoundEffectInfo> mergeSoundEffects = MergeLists(ancestor.SoundEffects, ours.SoundEffects, theirs.SoundEffects, new List<SoundEffectInfo>(), SoundEffectInfo.ByValueComparer, ref mergeConflicts);
             
             float? minTime = new float?[9]
             {
@@ -112,7 +117,7 @@ namespace QuaMergeDriver
                 CustomAudioSamples = ours.CustomAudioSamples // I suspect will have to work like layer merging
             };
             mergeQua.EditorLayers.AddRange(mergeLayers);
-            mergeQua.SoundEffects.AddRange(ours.SoundEffects);
+            mergeQua.SoundEffects.AddRange(mergeSoundEffects); // untested
             
             var objects = GenerateListsFromBlocks(mergeBlocks);
             mergeQua.HitObjects.AddRange(objects.HitObjects);
@@ -436,6 +441,23 @@ namespace QuaMergeDriver
                 return ours;
             else
             {
+                mergeConflicts++;
+                return conflict;
+            }
+        }
+        
+        // untested
+        public static List<T> MergeLists<T>(List<T> ancestor, List<T> ours, List<T> theirs, List<T> conflict, IEqualityComparer<T> byValueComparer, ref int mergeConflicts)
+        {
+            if (ours.SequenceEqual(theirs, byValueComparer))
+                return ours;
+            else if (ours.SequenceEqual(ancestor, byValueComparer))
+                return theirs;
+            else if (theirs.SequenceEqual(ancestor, byValueComparer))
+                return ours;
+            else
+            {
+                Console.WriteLine("Merge Conflict Occurred");
                 mergeConflicts++;
                 return conflict;
             }
