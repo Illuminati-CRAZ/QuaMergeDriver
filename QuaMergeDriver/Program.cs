@@ -1,4 +1,3 @@
-using ListDiff;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -46,11 +45,10 @@ namespace QuaMergeDriver
             
             int mergeConflicts = 0;
             
-            List<EditorLayerInfo> mergeLayers;
-            if (ours.EditorLayers.Count > 0 || theirs.EditorLayers.Count > 0)
-                mergeLayers = GenerateMergeLayers(ancestor, ours, theirs, ref mergeConflicts);
-            else
-                mergeLayers = new List<EditorLayerInfo>();
+            List<EditorLayerInfo> mergeLayers = GenerateIndexBasedMergeObjects<EditorLayerInfo>(ancestor.EditorLayers, ours.EditorLayers, theirs.EditorLayers,
+                                                                                                ancestor.HitObjects, ours.HitObjects, theirs.HitObjects,
+                                                                                                EditorLayerInfo.ByValueComparer,
+                                                                                                typeof(HitObjectInfo).GetProperty("EditorLayer"));
             
             float? minTime = new float?[9]
             {
@@ -129,206 +127,13 @@ namespace QuaMergeDriver
             return mergeConflicts;
         }
         
-        private static List<EditorLayerInfo> GenerateMergeLayers(Qua ancestor, Qua ours, Qua theirs, ref int mergeConflicts)
-        {
-            Console.WriteLine("Merging Layers...");
-            
-            // merge editor layers
-            // what if a layer is removed from one branch but not other?
-            // what happens to the notes?
-            // how to treat layers that are hidden?
-            // how to treat layers with different colors?
-            // if any change is detected to a layer, ask user what layer to put notes in
-            List<EditorLayerInfo> mergeLayers = new List<EditorLayerInfo>();
-            if (ours.EditorLayers.SequenceEqual(theirs.EditorLayers, EditorLayerInfo.ByValueComparer))
-                mergeLayers = ours.EditorLayers;
-            else
-            {
-                if (ours.EditorLayers.SequenceEqual(ancestor.EditorLayers, EditorLayerInfo.ByValueComparer))
-                {
-                    mergeLayers = theirs.EditorLayers;
-                    var layerMoves = new Dictionary<int, int>();
-                    var diff = new ListDiff<EditorLayerInfo, EditorLayerInfo>(ours.EditorLayers, theirs.EditorLayers, EditorLayerInfo.ByValueComparer.Equals);
-                    foreach (var action in diff.Actions)
-                    {
-                        if (action.ActionType != ListDiffActionType.Add)
-                        {
-                            int sourceLayer = ours.EditorLayers.FindIndex(x => x == action.SourceItem) + 1;
-                            Console.WriteLine($"Which layer should our layer {sourceLayer} notes merge to?");
-                            int destLayer = Convert.ToInt32(Console.ReadLine());
-                            layerMoves.Add(sourceLayer, destLayer);
-                        }
-                    }
-                    foreach (var hitObject in ours.HitObjects)
-                    {
-                        if (layerMoves.Keys.Contains(hitObject.EditorLayer))
-                            hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
-                    }
-                    foreach (var hitObject in ancestor.HitObjects)
-                    {
-                        if (layerMoves.Keys.Contains(hitObject.EditorLayer))
-                            hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
-                    }
-                }
-                else if (theirs.EditorLayers.SequenceEqual(ancestor.EditorLayers, EditorLayerInfo.ByValueComparer))
-                {
-                    mergeLayers = ours.EditorLayers;
-                    var layerMoves = new Dictionary<int, int>();
-                    var diff = new ListDiff<EditorLayerInfo, EditorLayerInfo>(theirs.EditorLayers, ours.EditorLayers, EditorLayerInfo.ByValueComparer.Equals);
-                    foreach (var action in diff.Actions)
-                    {
-                        if (action.ActionType != ListDiffActionType.Add)
-                        {
-                            int sourceLayer = theirs.EditorLayers.FindIndex(x => x == action.SourceItem) + 1;
-                            Console.WriteLine($"Which layer should their layer {sourceLayer} notes merge to?");
-                            int destLayer = Convert.ToInt32(Console.ReadLine());
-                            layerMoves.Add(sourceLayer, destLayer);
-                        }
-                    }
-                    foreach (var hitObject in theirs.HitObjects)
-                    {
-                        if (layerMoves.Keys.Contains(hitObject.EditorLayer))
-                            hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
-                    }
-                    foreach (var hitObject in ancestor.HitObjects)
-                    {
-                        if (layerMoves.Keys.Contains(hitObject.EditorLayer))
-                            hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
-                    }
-                }
-                else
-                {
-                    // probably just take the union of the lists
-                    // ask user which layer(s) to go before others? (does that work in a merge driver?)
-                    // what if user wants to combine the different layers into one layer?
-                    // after that need to change notes' layers accordingly
-                    // TODO: figure out what to do here
-                    
-                    Console.WriteLine("Merge Conflict in Layers");
-                    Console.WriteLine("How should it be resolved?");
-                    Console.WriteLine("1. merge theirs into ours");
-                    Console.WriteLine("2. merge ours into theirs");
-                    Console.WriteLine("3. ours then theirs");
-                    Console.WriteLine("4. theirs then ours");
-                    Console.WriteLine("5. only ours");
-                    Console.WriteLine("6. only theirs");
-                    
-                    // from there edit layers and notes' layers accordingly
-                    int input = Convert.ToInt32(Console.ReadLine());
-                    switch (input)
-                    {
-                        // cases 1 and 2 don't need notes to be moved around
-                        case 1:
-                        {
-                            mergeLayers = ours.EditorLayers;
-                            int layerCountDiff = theirs.EditorLayers.Count - mergeLayers.Count;
-                            if (layerCountDiff > 0)
-                                mergeLayers.AddRange(theirs.EditorLayers.GetRange(mergeLayers.Count, layerCountDiff));
-                            break;
-                        }
-                        case 2:
-                        {
-                            mergeLayers = theirs.EditorLayers;
-                            int layerCountDiff = ours.EditorLayers.Count - mergeLayers.Count;
-                            if (layerCountDiff > 0)
-                                mergeLayers.AddRange(ours.EditorLayers.GetRange(mergeLayers.Count, layerCountDiff));
-                            break;
-                        }
-                        // cases 3 and 4 need notes to be moved around
-                        case 3:
-                        {
-                            mergeLayers = ours.EditorLayers.Union(theirs.EditorLayers).ToList();
-                            // resulting layers from merge should be all of ours and then extra from theirs
-                            // so their notes need to be moved
-                            var layerMoves = new Dictionary<int, int>();
-                            for (int oldLayerIndex = 0; oldLayerIndex < theirs.EditorLayers.Count; oldLayerIndex++)
-                            {
-                                int newLayerIndex = mergeLayers.FindIndex(x => x == theirs.EditorLayers[oldLayerIndex]);
-                                if (newLayerIndex != oldLayerIndex)
-                                    layerMoves.Add(oldLayerIndex, newLayerIndex);
-                            }
-                            foreach (var hitObject in theirs.HitObjects)
-                            {
-                                if (layerMoves.Keys.Contains(hitObject.EditorLayer))
-                                    hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
-                            }
-                            break;
-                        }
-                        case 4:
-                        {
-                            mergeLayers = theirs.EditorLayers.Union(ours.EditorLayers).ToList();
-                            var layerMoves = new Dictionary<int, int>();
-                            for (int oldLayerIndex = 0; oldLayerIndex < ours.EditorLayers.Count; oldLayerIndex++)
-                            {
-                                int newLayerIndex = mergeLayers.FindIndex(x => x == ours.EditorLayers[oldLayerIndex]);
-                                if (newLayerIndex != oldLayerIndex)
-                                    layerMoves.Add(oldLayerIndex, newLayerIndex);
-                            }
-                            foreach (var hitObject in ours.HitObjects)
-                            {
-                                if (layerMoves.Keys.Contains(hitObject.EditorLayer))
-                                    hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
-                            }
-                            break;
-                        }
-                        case 5:
-                        {
-                            mergeLayers = ours.EditorLayers;
-                            var layerMoves = new Dictionary<int, int>();
-                            for (int oldLayerIndex = 1; oldLayerIndex < theirs.EditorLayers.Count + 1; oldLayerIndex++)
-                            {
-                                Console.Write($"Which layer should their layer {oldLayerIndex} notes go to? ");
-                                int newLayerIndex = Convert.ToInt32(Console.ReadLine());
-                                layerMoves.Add(oldLayerIndex, newLayerIndex);
-                            }
-                            foreach (var hitObject in theirs.HitObjects)
-                            {
-                                if (layerMoves.Keys.Contains(hitObject.EditorLayer))
-                                    hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
-                            }
-                            foreach (var hitObject in ancestor.HitObjects)
-                            {
-                                if (layerMoves.Keys.Contains(hitObject.EditorLayer))
-                                    hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
-                            }
-                            break;
-                        }
-                        case 6:
-                        {
-                            mergeLayers = theirs.EditorLayers;
-                            var layerMoves = new Dictionary<int, int>();
-                            for (int oldLayerIndex = 1; oldLayerIndex < ours.EditorLayers.Count + 1; oldLayerIndex++)
-                            {
-                                Console.Write($"Which layer should our layer {oldLayerIndex} notes go to? ");
-                                int newLayerIndex = Convert.ToInt32(Console.ReadLine());
-                                layerMoves.Add(oldLayerIndex, newLayerIndex);
-                            }
-                            foreach (var hitObject in ours.HitObjects)
-                            {
-                                if (layerMoves.Keys.Contains(hitObject.EditorLayer))
-                                    hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
-                            }
-                            foreach (var hitObject in ancestor.HitObjects)
-                            {
-                                if (layerMoves.Keys.Contains(hitObject.EditorLayer))
-                                    hitObject.EditorLayer = layerMoves[hitObject.EditorLayer];
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-            
-            return mergeLayers;
-        }
-        
         private static List<T> GenerateIndexBasedMergeObjects<T>(List<T> ancestor, List<T> ours, List<T> theirs,
                                                                  List<HitObjectInfo> ancestorHitObjects,
                                                                  List<HitObjectInfo> ourHitObjects,
                                                                  List<HitObjectInfo> theirHitObjects,
+                                                                 IEqualityComparer<T> byValueComparer,
                                                                  PropertyInfo propertyInfo)
         {
-            IEqualityComparer<T> byValueComparer = (IEqualityComparer<T>)typeof(T).GetField("ByValueComparer").GetValue(null);
             List<T> mergeResult;
             
             if (ours.SequenceEqual(theirs, byValueComparer))

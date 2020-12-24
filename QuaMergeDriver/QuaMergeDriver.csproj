@@ -4,10 +4,6 @@
     <ProjectReference Include="..\Quaver.API\Quaver.API\Quaver.API.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="ListDiff" Version="1.1.28" />
-  </ItemGroup>
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
